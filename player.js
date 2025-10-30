@@ -94,21 +94,30 @@ export class Player {
     }
 
     const track = q.shift();
+
+    // ■ ここからffmpeg-staticを利用
+    const ffmpegPath = require("ffmpeg-static");
+    const ytdl = require("ytdl-core");
+    const { createAudioResource, StreamType } = require("@discordjs/voice");
+
     const stream = ytdl(track.url, { filter: "audioonly", highWaterMark: 1 << 25 });
+    
+    // prism でFFmpegを直接使わず、ffmpeg-staticを利用
+    const { spawn } = require("child_process");
+    const ffmpegProcess = spawn(ffmpegPath, [
+      "-i", "pipe:0",
+      "-f", "s16le",
+      "-ar", "48000",
+      "-ac", "2",
+      "pipe:1",
+    ], { stdio: ["pipe", "pipe", "ignore"] });
 
-    const ffmpeg = new prism.FFmpeg({
-      args: [
-        "-analyzeduration", "0",
-        "-loglevel", "0",
-        "-f", "s16le",
-        "-ar", "48000",
-        "-ac", "2"
-      ]
+    stream.pipe(ffmpegProcess.stdin);
+
+    const resource = createAudioResource(ffmpegProcess.stdout, {
+      inputType: StreamType.Raw
     });
-
-    const pcm = stream.pipe(ffmpeg);
-
-    const resource = createAudioResource(pcm, { inputType: "converted" });
+    // ■ ここまで
 
     const audioPlayer = this.audioPlayers.get(guildId);
     if (!audioPlayer) {
@@ -132,6 +141,7 @@ export class Player {
 
     await textChannel.send(`▶️ 再生開始: **${track.title}** (${formatTime(track.duration)})`);
   }
+
 
   async skip(guildId) {
     const player = this.audioPlayers.get(guildId);
